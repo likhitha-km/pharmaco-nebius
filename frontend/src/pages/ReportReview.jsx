@@ -5,6 +5,7 @@ import { TimelineViz } from '../components/report/TimelineViz.jsx';
 import { CompletenessScore } from '../components/report/CompletenessScore.jsx';
 import { ICSRReport } from '../components/report/ICSRReport.jsx';
 import { ConfidenceScore } from '../components/report/ConfidenceScore.jsx';
+import { AdrAgentReport } from '../components/report/AdrAgentReport.jsx';
 import { conversationApi, reportApi } from '../utils/api.js';
 import { useConversation } from '../hooks/useConversation.js';
 import { useReportProgress } from '../hooks/useReportProgress.js';
@@ -231,7 +232,7 @@ export default function ReportReview() {
   const med = extractedData?.suspected_medicines?.[0];
   const reactions = extractedData?.adverse_reactions || [];
   const causality = meddraData?.causality_assessment;
-  const causalityColors = { Certain: '#059669', Probable: '#0EA5E9', Possible: '#D97706', Unlikely: '#EF4444' };
+  const causalityColors = { Certain: '#059669', 'Probable/Likely': '#0EA5E9', Probable: '#0EA5E9', Possible: '#D97706', Unlikely: '#EF4444' };
   const clinical = extractedData?.clinical_context || {};
   const patient = extractedData?.patient || {};
   const hasAdditionalInfo = clinical.reason_for_taking || clinical.outcome || (clinical.concomitant_medications || []).length > 0
@@ -279,6 +280,11 @@ export default function ReportReview() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 32, alignItems: 'flex-start' }}>
           {/* Left — Report content */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+            {/* Agent-generated structured ADR report (Nemotron via Nebius Token Factory) */}
+            {conversationId && (
+              <AdrAgentReport conversationId={conversationId} onReport={() => hydrateConversation(conversationId)} />
+            )}
 
             {/* AI-generated draft, once requested */}
             {icsr && (
@@ -362,11 +368,15 @@ export default function ReportReview() {
                       {mapping && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13 }}>{mapping.preferred_term}</span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-primary)', background: 'var(--color-primary-light)', padding: '2px 6px', borderRadius: 4 }}>
-                            [{mapping.meddra_code}]
-                          </span>
-                          <ConfidenceScore confidence={mapping.mapping_confidence} />
-                          {mapping.mapping_confidence < 0.7 && (
+                          {mapping.meddra_code ? (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-primary)', background: 'var(--color-primary-light)', padding: '2px 6px', borderRadius: 4 }}>
+                              [{mapping.meddra_code}]
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#B45309', background: '#FEF3C7', padding: '2px 6px', borderRadius: 4 }}>provisional — verify</span>
+                          )}
+                          {mapping.mapping_confidence != null && <ConfidenceScore confidence={mapping.mapping_confidence} />}
+                          {mapping.mapping_confidence != null && mapping.mapping_confidence < 0.7 && (
                             <AlertTriangle size={14} color="#D97706" aria-label="Low confidence mapping — please verify" />
                           )}
                         </div>

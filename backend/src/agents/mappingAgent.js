@@ -1,83 +1,169 @@
-import { callGroq, MODEL_SMART } from '../services/nebiusService.js';
+import { chatCompletion } from '../services/nebiusService.js';
 import { extractJson } from '../utils/parseJson.js';
 
-const MEDDRA_REFERENCE = `WHO MedDRA Preferred Terms reference list:
-Dizziness 10013573 | Nausea 10028813 | Vomiting 10047700 | Headache 10019211 | Rash 10037844 | Fatigue 10016256 | Chest pain 10008479 | Tremor 10044565 | Dyspnoea 10013968 | Abdominal pain 10000081 | Insomnia 10022437 | Palpitations 10033557 | Oedema 10030095 | Pruritus 10037087 | Dry mouth 10013781 | Diarrhoea 10012735 | Constipation 10010774 | Blurred vision 10005886 | Hypertension 10020772 | Hypotension 10021097 | Tachycardia 10043071 | Bradycardia 10006093 | Urticaria 10046735 | Alopecia 10001760 | Jaundice 10023126 | Confusion 10010300 | Anxiety 10002855 | Depression 10012378 | Weight gain 10047899 | Weight loss 10047900 | Myalgia 10028411 | Arthralgia 10003239 | Fever 10016558 | Chills 10008531 | Sweating 10042241 | Flushing 10016825 | Anorexia 10002646 | Flatulence 10016766 | Dyspepsia 10013946 | Gastritis 10017853 | Hepatotoxicity 10019851 | Nephrotoxicity 10029149 | Peripheral neuropathy 10034620 | Paraesthesia 10033775 | Amnesia 10001949 | Somnolence 10041349 | Hallucination 10019063 | Agitation 10001497 | Syncope 10042772 | Vertigo 10047166 | Tinnitus 10043882 | Angioedema 10002424 | Anaphylaxis 10002198 | Stevens-Johnson syndrome 10042033 | Drug reaction with eosinophilia 10013700 | Thrombocytopenia 10043554 | Leucopenia 10024318 | Anaemia 10002034 | Hyperglycaemia 10020635 | Hypoglycaemia 10021005 | Hyponatraemia 10021026 | Hypokalaemia 10021015 | QT prolongation 10037396 | Pulmonary embolism 10037377 | Deep vein thrombosis 10051055 | Stroke 10042244 | Myocardial infarction 10028596 | Renal failure 10038435 | Liver failure 10024690 | Pancreatitis 10033645 | Colitis 10009887 | Photosensitivity 10034966 | Acne 10000496 | Dry skin 10013786 | Hair loss 10001760 | Muscle weakness 10028356 | Back pain 10003988 | Joint swelling 10023216 | Cough 10011224 | Rhinitis 10039085 | Conjunctivitis 10010741`;
+// Agent 4 — terminology mapping + WHO-UMC evidence organisation.
+//
+// IMPORTANT: Pharmaco does not bundle the licensed MedDRA dictionary, so this
+// agent never emits MedDRA numeric codes. It proposes a candidate Preferred
+// Term from a small local reference list of common PT names, and every mapping
+// is marked `requires_verification`. Causality is a *suggested* WHO-UMC
+// category with its evidence — a human reviewer decides.
 
-const SYSTEM_PROMPT = `You are a WHO MedDRA medical terminology mapper. Map each adverse reaction description to the most appropriate MedDRA Preferred Term from the reference list. Also assess WHO-UMC causality: Certain, Probable, Possible, or Unlikely based on temporal relationship, dechallenge, rechallenge, and alternative explanation signals. Respond ONLY with valid JSON.
+const CANDIDATE_PREFERRED_TERMS = [
+  'Dizziness', 'Nausea', 'Vomiting', 'Headache', 'Rash', 'Fatigue', 'Chest pain', 'Tremor', 'Dyspnoea', 'Abdominal pain',
+  'Insomnia', 'Palpitations', 'Oedema', 'Pruritus', 'Dry mouth', 'Diarrhoea', 'Constipation', 'Vision blurred', 'Hypertension',
+  'Hypotension', 'Tachycardia', 'Bradycardia', 'Urticaria', 'Alopecia', 'Jaundice', 'Confusional state', 'Anxiety', 'Depression',
+  'Weight increased', 'Weight decreased', 'Myalgia', 'Arthralgia', 'Pyrexia', 'Chills', 'Hyperhidrosis', 'Flushing',
+  'Decreased appetite', 'Flatulence', 'Dyspepsia', 'Gastritis', 'Hepatotoxicity', 'Nephrotoxicity', 'Peripheral neuropathy',
+  'Paraesthesia', 'Amnesia', 'Somnolence', 'Hallucination', 'Agitation', 'Syncope', 'Vertigo', 'Tinnitus', 'Angioedema',
+  'Anaphylactic reaction', 'Stevens-Johnson syndrome', 'Drug reaction with eosinophilia and systemic symptoms',
+  'Thrombocytopenia', 'Leukopenia', 'Anaemia', 'Hyperglycaemia', 'Hypoglycaemia', 'Hyponatraemia', 'Hypokalaemia',
+  'Electrocardiogram QT prolonged', 'Pulmonary embolism', 'Deep vein thrombosis', 'Cerebrovascular accident',
+  'Myocardial infarction', 'Renal failure', 'Hepatic failure', 'Pancreatitis', 'Colitis', 'Photosensitivity reaction', 'Acne',
+  'Dry skin', 'Muscular weakness', 'Back pain', 'Joint swelling', 'Cough', 'Rhinitis', 'Conjunctivitis', 'Swelling face',
+];
 
-${MEDDRA_REFERENCE}
+const SYSTEM_PROMPT = `You are a pharmacovigilance terminology and causality-evidence assistant supporting a human reviewer. You never make a final causality decision.
 
-WHO-UMC Causality Categories:
-- Certain: Plausible time relationship, confirmed by dechallenge, rechallenge positive, unlikely due to disease
-- Probable: Reasonable time sequence, unlikely due to disease, confirmed by dechallenge, rechallenge not done
-- Possible: Reasonable time sequence, could be explained by disease, dechallenge absent or unclear
-- Unlikely: Time sequence less suggestive, disease or other drugs provide plausible explanation`;
+TASK 1 — terminology: for each reported reaction, suggest a MedDRA-style Preferred Term ONLY if one from this candidate list is a clear match:
+${CANDIDATE_PREFERRED_TERMS.join(' | ')}
+If no listed term clearly matches, set "candidate_term" to null. Always give "provisional_description": a short neutral clinical description of what the patient reported. Do NOT output any numeric codes. Do not invent terms.
 
-const OUTPUT_SCHEMA = `{
-  "meddra_mappings": [
-    {
-      "original_text": "string",
-      "preferred_term": "string",
-      "meddra_code": "string",
-      "soc": "string",
-      "mapping_confidence": 0.0,
-      "mapping_notes": "string|null"
-    }
-  ],
+TASK 2 — WHO-UMC evidence: using ONLY the supplied data, list evidence for and against a causal link (temporal relationship, dechallenge, rechallenge, alternative explanations such as other medicines or disease, pharmacological plausibility only if well known), list information missing that would matter for causality, and suggest a WHO-UMC category from: "Certain", "Probable/Likely", "Possible", "Unlikely", "Conditional/Unclassified", "Unassessable/Unclassifiable". Be conservative; if the data is thin choose "Possible" or "Unassessable/Unclassifiable". Write a 2-4 sentence neutral evidence summary that states what is unknown.
+
+Respond ONLY with JSON:
+{
+  "meddra_mappings": [ { "original_text": "string", "candidate_term": "string|null", "provisional_description": "string", "mapping_confidence": 0.0, "mapping_notes": "string|null" } ],
   "causality_assessment": {
-    "category": "Certain|Probable|Possible|Unlikely",
-    "who_umc_basis": "string",
-    "confidence": 0.0,
-    "flags_for_review": []
-  },
-  "seriousness": {
-    "is_serious": false,
-    "criteria": [],
-    "requires_expedited_reporting": false
+    "category": "Certain|Probable/Likely|Possible|Unlikely|Conditional/Unclassified|Unassessable/Unclassifiable",
+    "evidence_for": ["string"], "evidence_against": ["string"], "missing_information": ["string"],
+    "who_umc_basis": "string (evidence summary)", "confidence": 0.0
   }
 }`;
 
+const WHO_UMC = ['Certain', 'Probable/Likely', 'Possible', 'Unlikely', 'Conditional/Unclassified', 'Unassessable/Unclassifiable'];
+const strArr = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()) : []);
+
 /**
- * Map adverse reactions to MedDRA and assess causality.
- * @param {Object} extractedData - output of extractionAgent
- * @returns {Object} MedDRA mappings + causality assessment
+ * Code-level guard rails: the model's suggested category can never exceed what
+ * the recorded evidence supports.
  */
-export async function mapToMedDRA(extractedData) {
+export function constrainCausality(category, signals = {}, hasTemporalInfo = false) {
+  let cat = WHO_UMC.includes(category) ? category : 'Unassessable/Unclassifiable';
+  const notes = [];
+  const dech = signals.dechallenge;
+  const rech = signals.rechallenge;
+  if (cat === 'Certain' && rech !== 'positive') { cat = 'Probable/Likely'; notes.push('Downgraded from Certain: no positive rechallenge recorded.'); }
+  if (['Certain', 'Probable/Likely'].includes(cat) && dech !== 'positive' && dech !== 'negative') {
+    cat = 'Possible';
+    notes.push('Downgraded to Possible: dechallenge information is missing.');
+  }
+  if (['Certain', 'Probable/Likely', 'Possible'].includes(cat) && !hasTemporalInfo) {
+    cat = 'Unassessable/Unclassifiable';
+    notes.push('Set to Unassessable: no timing information linking the medicine and the reaction.');
+  }
+  return { category: cat, notes };
+}
+
+/**
+ * Map reactions to candidate terms and organise WHO-UMC evidence.
+ * @param {Object} extractedData
+ * @param {{strict?: boolean, meta?: object}} options
+ */
+export async function mapToMedDRA(extractedData, { strict = false, meta = null } = {}) {
   const reactions = extractedData.adverse_reactions || [];
-  const causalitySignals = extractedData.causality_signals || {};
+  const signals = extractedData.causality_signals || {};
+  const med = extractedData.suspected_medicines?.[0] || {};
+  const hasTemporalInfo = Boolean(
+    reactions[0]?.onset_date || med.start_date || signals.temporal_relationship
+  );
 
   const inputText = JSON.stringify({
+    suspected_medicine: { name: med.name, start_date: med.start_date, stop_date: med.stop_date, stopped: med.stopped },
     adverse_reactions: reactions,
-    causality_signals: causalitySignals,
+    causality_signals: signals,
     clinical_context: extractedData.clinical_context || {},
   });
 
-  try {
-    const raw = await callGroq(
-      `${SYSTEM_PROMPT}\n\nOutput EXACTLY this JSON structure:\n${OUTPUT_SCHEMA}`,
-      [{ role: 'user', content: `Map these ADRs and assess causality:\n${inputText}` }],
-      MODEL_SMART,
-      1500,
-      0.1
-    );
+  const fallback = (reason) => ({
+    meddra_mappings: reactions.map((r) => ({
+      original_text: r.original_text || '',
+      candidate_term: null,
+      preferred_term: r.english_translation || r.original_text || null,
+      meddra_code: null,
+      soc: null,
+      provisional_description: r.english_translation || r.original_text || '',
+      mapping_confidence: null,
+      mapping_status: 'provisional',
+      requires_verification: true,
+      mapping_notes: `Terminology mapping unavailable (${reason}) — provisional description only; requires verification.`,
+    })),
+    causality_assessment: {
+      category: 'Unassessable/Unclassifiable',
+      evidence_for: [], evidence_against: [], missing_information: [],
+      who_umc_basis: `Causality could not be organised automatically (${reason}). Manual assessment required.`,
+      confidence: null, flags_for_review: ['AI assessment unavailable'], guard_notes: [],
+      suggested_by_ai: false,
+    },
+    seriousness: { is_serious: null, criteria: [], requires_expedited_reporting: null },
+    ai_error: reason,
+  });
 
-    const parsed = extractJson(raw);
-    if (!parsed) throw new Error('Mapping model returned no parseable JSON');
-    return parsed;
+  try {
+    const { content, model, usage, latencyMs } = await chatCompletion({
+      systemPrompt: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Map these reactions and organise causality evidence:\n${inputText}` }],
+      maxTokens: 1800,
+      temperature: 0.1,
+      label: 'assessment',
+    });
+    if (meta) Object.assign(meta, { model, usage, latencyMs });
+
+    const parsed = extractJson(content);
+    if (!parsed || !Array.isArray(parsed.meddra_mappings) || !parsed.causality_assessment) {
+      throw new Error('Assessment model returned invalid JSON');
+    }
+
+    const allowed = new Set(CANDIDATE_PREFERRED_TERMS.map((t) => t.toLowerCase()));
+    const mappings = parsed.meddra_mappings.map((m, i) => {
+      const cand = typeof m.candidate_term === 'string' && allowed.has(m.candidate_term.toLowerCase())
+        ? CANDIDATE_PREFERRED_TERMS.find((t) => t.toLowerCase() === m.candidate_term.toLowerCase())
+        : null;
+      const description = m.provisional_description || reactions[i]?.english_translation || m.original_text || '';
+      return {
+        original_text: m.original_text || reactions[i]?.original_text || '',
+        candidate_term: cand,
+        preferred_term: cand || description || null, // kept for existing UI consumers
+        meddra_code: null, // never fabricated — licensed MedDRA dictionary not bundled
+        soc: null,
+        provisional_description: description,
+        mapping_confidence: typeof m.mapping_confidence === 'number' ? Math.min(1, Math.max(0, m.mapping_confidence)) : null,
+        mapping_status: 'provisional',
+        requires_verification: true,
+        mapping_notes: m.mapping_notes || (cand ? 'Candidate term from a local reference list; verify against MedDRA.' : 'No clear candidate term — verify terminology manually.'),
+      };
+    });
+
+    const c = parsed.causality_assessment;
+    const { category, notes } = constrainCausality(c.category, signals, hasTemporalInfo);
+    return {
+      meddra_mappings: mappings,
+      causality_assessment: {
+        category,
+        evidence_for: strArr(c.evidence_for),
+        evidence_against: strArr(c.evidence_against),
+        missing_information: strArr(c.missing_information),
+        who_umc_basis: typeof c.who_umc_basis === 'string' ? c.who_umc_basis : '',
+        confidence: typeof c.confidence === 'number' ? Math.min(1, Math.max(0, c.confidence)) : null,
+        flags_for_review: ['AI-suggested category — reviewer must confirm'],
+        guard_notes: notes,
+        suggested_by_ai: true,
+      },
+      seriousness: { is_serious: null, criteria: [], requires_expedited_reporting: null },
+    };
   } catch (error) {
     console.error('[MappingAgent] error:', error.message);
-    return {
-      meddra_mappings: reactions.map((r) => ({
-        original_text: r.original_text || '',
-        preferred_term: r.english_translation || r.original_text || 'Unknown',
-        meddra_code: '10000000',
-        soc: 'General disorders',
-        mapping_confidence: 0.5,
-        mapping_notes: 'Automated mapping — manual review recommended',
-      })),
-      causality_assessment: { category: 'Possible', who_umc_basis: 'Insufficient data for stronger assessment', confidence: 0.5, flags_for_review: [] },
-      seriousness: { is_serious: false, criteria: [], requires_expedited_reporting: false },
-    };
+    if (strict) throw error;
+    return fallback(error.message);
   }
 }

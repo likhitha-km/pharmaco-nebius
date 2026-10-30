@@ -2,7 +2,7 @@ import { callGroq, MODEL_SMART } from '../services/nebiusService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { extractJson } from '../utils/parseJson.js';
 
-const SYSTEM_PROMPT = `You are a CDSCO pharmacovigilance officer generating Individual Case Safety Reports (ICSR) for India's Pharmacovigilance Programme of India (PvPI). Generate reports in compliance with ICSR reporting standards. Produce a professional, clinically appropriate narrative summary and all structured ICSR fields. Respond ONLY with valid JSON.`;
+const SYSTEM_PROMPT = `You are a CDSCO pharmacovigilance officer generating Individual Case Safety Reports (ICSR) for India's Pharmacovigilance Programme of India (PvPI). Generate reports in compliance with ICSR reporting standards. Produce a professional, clinically appropriate narrative summary and all structured ICSR fields. Never invent facts or terminology codes: use null for anything not in the input data, set meddra_code to null, and set seriousness to "Undetermined" unless the input explicitly establishes it. Respond ONLY with valid JSON.`;
 
 /**
  * Generate a complete ICSR report from extracted and mapped data.
@@ -23,7 +23,7 @@ export async function generateICSR(extractedData, meddraData, completenessData) 
   const outputSchema = `{
     "report_id": "${reportId}",
     "report_type": "Initial|Follow-up",
-    "seriousness": "Serious|Non-serious",
+    "seriousness": "Serious|Non-serious|Undetermined",
     "patient": {
       "initials": "string|null",
       "age_group": "string|null",
@@ -37,7 +37,7 @@ export async function generateICSR(extractedData, meddraData, completenessData) 
       {
         "original_text": "string",
         "meddra_preferred_term": "string",
-        "meddra_code": "string",
+        "meddra_code": "null",
         "onset_date": "string|null",
         "resolution_date": "string|null",
         "severity": "mild|moderate|severe|null",
@@ -100,12 +100,12 @@ function buildFallbackICSR(reportId, extracted, meddra, completeness) {
   return {
     report_id: reportId,
     report_type: 'Initial',
-    seriousness: meddra?.seriousness?.is_serious ? 'Serious' : 'Non-serious',
+    seriousness: meddra?.seriousness?.is_serious ? 'Serious' : 'Undetermined',
     patient: extracted?.patient || {},
     adverse_events: (extracted?.adverse_reactions || []).map((r, i) => ({
       original_text: r.original_text,
       meddra_preferred_term: meddra?.meddra_mappings?.[i]?.preferred_term || r.english_translation || r.original_text,
-      meddra_code: meddra?.meddra_mappings?.[i]?.meddra_code || 'Unknown',
+      meddra_code: meddra?.meddra_mappings?.[i]?.meddra_code || null,
       onset_date: r.onset_date,
       resolution_date: r.resolution_date,
       severity: r.severity,
@@ -113,7 +113,7 @@ function buildFallbackICSR(reportId, extracted, meddra, completeness) {
     })),
     suspect_drugs: extracted?.suspected_medicines || [],
     causality: {
-      who_umc_category: meddra?.causality_assessment?.category || 'Possible',
+      who_umc_category: meddra?.causality_assessment?.category || 'Unassessable/Unclassifiable',
       basis: meddra?.causality_assessment?.who_umc_basis || 'Insufficient data',
     },
     narrative: `Patient reported ${reaction?.original_text || 'adverse reaction'} after taking ${medicine?.name || 'suspected medicine'}. ${reaction?.onset_date ? `Onset: ${reaction.onset_date}.` : ''} ${extracted?.clinical_context?.outcome ? `Outcome: ${extracted.clinical_context.outcome}.` : ''}`,

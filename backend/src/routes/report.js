@@ -27,6 +27,8 @@ router.post('/draft', requireAuth, async (req, res) => {
       updatedAt: new Date().toISOString(),
       title: extractedData?.suspected_medicines?.[0]?.name || 'ADR Draft',
       reaction: extractedData?.adverse_reactions?.[0]?.original_text || extractedData?.adverse_reactions?.[0]?.english_translation || null,
+      adrReport: existingDraft?.adrReport,
+      humanReview: existingDraft?.humanReview,
     };
 
     await saveReport(draftReport);

@@ -47,6 +47,16 @@ export const conversationApi = {
   generateDraft: (conversationId) => api.post(`/conversation/${conversationId}/generate-draft`),
 };
 
+// ---- ADR agent API (Nemotron via Nebius Token Factory) ----
+export const adrApi = {
+  status: () => api.get('/adr/status'),
+  demoScenario: () => api.get('/adr/demo-scenario'),
+  assess: (conversationId) => api.post(`/adr/${conversationId}/assess`, {}, { timeout: 240000 }),
+  get: (conversationId) => api.get(`/adr/${conversationId}`),
+  review: (conversationId, payload) => api.post(`/adr/${conversationId}/review`, payload),
+  reportJsonUrl: (conversationId) => `${BASE_URL}/adr/${conversationId}/report.json`,
+};
+
 // ---- Report API ----
 export const reportApi = {
   myReports: () => api.get('/report/my-reports'),

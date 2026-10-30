@@ -6,6 +6,7 @@ import reportRoutes from './routes/report.js';
 import drugRoutes from './routes/drug.js';
 import authRoutes from './routes/auth.js';
 import dashboardRoutes from './routes/dashboard.js';
+import adrRoutes from './routes/adr.js';
 import { requireAuth } from './middleware/auth.js';
 import { rateLimit } from './middleware/rateLimit.js';
 
@@ -35,6 +36,7 @@ app.use('/api/report', reportRoutes);
 app.use('/api/drug', drugRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/adr', adrRoutes);
 
 // Health check
 app.get('/', (req, res) => {
@@ -42,7 +44,7 @@ app.get('/', (req, res) => {
     status: 'Pharmaco API running',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    endpoints: ['/api/conversation', '/api/report', '/api/drug', '/api/auth', '/api/dashboard'],
+    endpoints: ['/api/conversation', '/api/report', '/api/drug', '/api/auth', '/api/dashboard', '/api/adr'],
   });
 });
 

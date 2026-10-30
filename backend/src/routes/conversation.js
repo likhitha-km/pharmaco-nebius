@@ -11,6 +11,8 @@ import { saveConversation, updateConversation, getConversation, saveReport, upda
 import { transcribeAudio } from '../services/sarvamService.js';
 import { WELCOME_MESSAGES } from '../prompts/conversationPrompts.js';
 import { mergeExtractedData, mergeNewFields } from '../utils/extractedData.js';
+import { computeFieldStatus } from '../utils/adrSchema.js';
+import { getModelInfo } from '../services/nebiusService.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -25,7 +27,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/start', async (req, res) => {
   try {
-    const { userType = 'patient', language = 'hi-IN', isAnonymous = true } = req.body;
+    const { userType = 'patient', language = 'hi-IN', isAnonymous = true, synthetic = false } = req.body;
 
     const welcomeMessage = WELCOME_MESSAGES[language] || WELCOME_MESSAGES['en-IN'];
     const conversationId = uuidv4();
@@ -39,6 +41,7 @@ router.post('/start', async (req, res) => {
       userType,
       isAnonymous,
       status: 'active',
+      synthetic: Boolean(synthetic),
     };
 
     await saveConversation(conversationData);
@@ -169,6 +172,8 @@ router.post('/message', async (req, res) => {
       extractedData,
       meddraData,
       completenessScore,
+      fieldStatus: computeFieldStatus(extractedData),
+      model: getModelInfo().model,
     });
   } catch (error) {
     console.error('[POST /message]', error);
@@ -307,6 +312,8 @@ router.post('/end', async (req, res) => {
       status: 'submitted',
       isAnonymous: conversation.isAnonymous,
       createdAt: existingDraft?.createdAt,
+      adrReport: existingDraft?.adrReport,
+      humanReview: existingDraft?.humanReview,
     });
 
     const drugNames = extractedData.suspected_medicines?.map(m => m.name) || [];

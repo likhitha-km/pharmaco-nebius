@@ -8,6 +8,7 @@ const initialState = {
   isLoading: false,
   extractedData: null,
   meddraData: null,
+  fieldStatus: null,
   completenessScore: null,
   isReportReady: false,
   isEmergency: false,
@@ -37,6 +38,7 @@ function reducer(state, action) {
     case 'SET_LOADING': return { ...state, isLoading: action.payload };
     case 'SET_EXTRACTED_DATA': return { ...state, extractedData: action.payload };
     case 'SET_MEDDRA_DATA': return { ...state, meddraData: action.payload };
+    case 'SET_FIELD_STATUS': return { ...state, fieldStatus: action.payload };
     case 'SET_COMPLETENESS': return { ...state, completenessScore: action.payload };
     case 'SET_REPORT_READY': return { ...state, isReportReady: action.payload };
     case 'SET_EMERGENCY': return { ...state, isEmergency: action.payload };

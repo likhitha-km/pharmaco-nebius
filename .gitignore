@@ -14,5 +14,6 @@ backend/firebase/serviceAccount.json
 # OS
 .DS_Store
 
-# Local reference docs
 Pharmaco Req.pdf
+
+DEMO_SCRIPT.md

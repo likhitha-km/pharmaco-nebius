@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useConversationContext } from '../context/ConversationContext.jsx';
 import { conversationApi, reportApi } from '../utils/api.js';
+import { computeFieldStatusClient } from '../utils/fieldStatus.js';
 
 // Persists which conversation is currently "in progress" so a page refresh
 // on /report doesn't silently start a brand-new conversation and orphan the
@@ -20,7 +21,7 @@ export function useConversation() {
   const { state, dispatch } = useConversationContext();
   const autoDraftedRef = useRef(new Set());
 
-  const startConversation = useCallback(async (userType = 'patient', language = 'hi-IN', isAnonymous = true) => {
+  const startConversation = useCallback(async (userType = 'patient', language = 'hi-IN', isAnonymous = true, synthetic = false) => {
     dispatch({ type: 'RESET' });
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_USER_TYPE', payload: userType });
@@ -28,7 +29,7 @@ export function useConversation() {
     dispatch({ type: 'SET_ANONYMOUS', payload: isAnonymous });
 
     try {
-      const { data } = await conversationApi.start({ userType, language, isAnonymous });
+      const { data } = await conversationApi.start({ userType, language, isAnonymous, synthetic });
       dispatch({ type: 'SET_CONVERSATION_ID', payload: data.conversationId });
       dispatch({
         type: 'ADD_MESSAGE',
@@ -101,6 +102,7 @@ export function useConversation() {
       if (data.isEmergency) dispatch({ type: 'SET_EMERGENCY', payload: true });
       if (data.extractedData) dispatch({ type: 'SET_EXTRACTED_DATA', payload: data.extractedData });
       if (data.meddraData) dispatch({ type: 'SET_MEDDRA_DATA', payload: data.meddraData });
+      if (data.fieldStatus) dispatch({ type: 'SET_FIELD_STATUS', payload: data.fieldStatus });
       if (data.completenessScore != null) dispatch({ type: 'SET_COMPLETENESS', payload: data.completenessScore });
       if (data.isReportReady) dispatch({ type: 'SET_REPORT_READY', payload: true });
 
@@ -173,6 +175,7 @@ export function useConversation() {
       if (Array.isArray(data.messages)) dispatch({ type: 'SET_MESSAGES', payload: data.messages });
       if (data.extractedData) dispatch({ type: 'SET_EXTRACTED_DATA', payload: data.extractedData });
       if (data.meddraData) dispatch({ type: 'SET_MEDDRA_DATA', payload: data.meddraData });
+      if (data.extractedData) dispatch({ type: 'SET_FIELD_STATUS', payload: computeFieldStatusClient(data.extractedData) });
       if (data.completenessScore != null) dispatch({ type: 'SET_COMPLETENESS', payload: data.completenessScore });
       if (data.language) dispatch({ type: 'SET_LANGUAGE', payload: data.language });
       if (data.userType) dispatch({ type: 'SET_USER_TYPE', payload: data.userType });

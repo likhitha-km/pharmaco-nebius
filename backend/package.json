@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "test": "node --test tests/adr.unit.test.js tests/adr.integration.test.js",
+    "test:unit": "node --test tests/adr.unit.test.js"
   },
   "dependencies": {
     "axios": "^1.7.0",

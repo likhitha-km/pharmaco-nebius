@@ -8,6 +8,8 @@ import { useConversation, ACTIVE_CONVERSATION_KEY } from '../hooks/useConversati
 import { useLanguageContext } from '../context/LanguageContext.jsx';
 import { useReportProgress } from '../hooks/useReportProgress.js';
 import { LANGUAGES } from '../utils/i18n.js';
+import { adrApi } from '../utils/api.js';
+import { Cpu, FileText as FileTextIcon, FlaskConical } from 'lucide-react';
 
 export default function Report() {
   const navigate = useNavigate();
@@ -27,7 +29,32 @@ export default function Report() {
     changeLanguage,
     changeUserType,
     changeAnonymous,
+    fieldStatus,
+    sendMessage,
+    isLoading,
   } = useConversation();
+  const [modelInfo, setModelInfo] = useState(null);
+  const [demo, setDemo] = useState({ active: false, turns: [], index: 0 });
+
+  useEffect(() => {
+    adrApi.status().then(({ data }) => setModelInfo(data)).catch(() => setModelInfo(null));
+  }, []);
+
+  const startSyntheticDemo = async () => {
+    const { data } = await adrApi.demoScenario();
+    setLanguage('en-IN');
+    await startConversation('patient', 'en-IN', true, true);
+    setDemo({ active: true, turns: data.turns, index: 0 });
+  };
+
+  const sendNextDemoTurn = async () => {
+    if (!demo.active || demo.index >= demo.turns.length || isLoading) return;
+    const turn = demo.turns[demo.index];
+    setDemo((d) => ({ ...d, index: d.index + 1 }));
+    await sendMessage(turn);
+  };
+
+  const canGenerate = !!(extractedData?.suspected_medicines?.length && extractedData?.adverse_reactions?.length);
   const progress = useReportProgress(extractedData);
 
   useEffect(() => {
@@ -161,6 +188,63 @@ export default function Report() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* ADR agent: what has been collected, what is missing, and next step */}
+        <div id="adr-agent-panel">
+          <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Cpu size={13} aria-hidden="true" /> ADR agent
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 10, lineHeight: 1.5 }}>
+            {modelInfo?.configured === false
+              ? 'AI model not configured on the server.'
+              : <>Powered by <strong>NVIDIA Nemotron</strong> on <strong>Nebius Token Factory</strong>.</>}
+          </p>
+          {fieldStatus ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {fieldStatus.map((f) => {
+                const color = f.status === 'provided' ? '#047857' : f.status === 'negative' ? '#4B5563' : f.required ? '#B91C1C' : '#B45309';
+                const mark = f.status === 'provided' ? '✓' : f.status === 'negative' ? '✕' : '?';
+                const text = f.status === 'provided' ? 'provided' : f.status === 'negative' ? 'stated: no / not applicable' : 'not yet provided';
+                return (
+                  <div key={f.key} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12 }} title={text}>
+                    <span style={{ width: 14, color, fontWeight: 700 }} aria-hidden="true">{mark}</span>
+                    <span style={{ color: f.status === 'missing' ? 'var(--color-text-secondary)' : 'var(--color-text-primary)' }}>{f.label}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color }}>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Details appear here as you describe the reaction.</p>
+          )}
+          <button
+            className="btn btn-primary"
+            id="adr-generate-report"
+            style={{ width: '100%', marginTop: 14 }}
+            disabled={!canGenerate || !conversationId}
+            onClick={handleReportReady}
+            aria-label="Generate ADR report"
+          >
+            <FileTextIcon size={16} aria-hidden="true" /> Generate ADR report
+          </button>
+          {!canGenerate && <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 6 }}>Needs at least a medicine and a reaction.</p>}
+        </div>
+
+        {/* Synthetic demo helper */}
+        <div style={{ padding: 12, border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 8px', lineHeight: 1.5 }}>
+            <FlaskConical size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Try it with a <strong>synthetic (fictional) patient</strong>. Only the patient's messages are scripted; the agent's questions and analysis are generated live.
+          </p>
+          {!demo.active ? (
+            <button className="btn btn-outline btn-sm" id="adr-demo-start" style={{ width: '100%' }} onClick={startSyntheticDemo}>Start synthetic patient</button>
+          ) : demo.index < demo.turns.length ? (
+            <button className="btn btn-outline btn-sm" id="adr-demo-next" style={{ width: '100%' }} onClick={sendNextDemoTurn} disabled={isLoading}>
+              Send synthetic patient message {demo.index + 1} of {demo.turns.length}
+            </button>
+          ) : (
+            <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', margin: 0 }}>All synthetic messages sent. Generate the report above.</p>
           )}
         </div>
 

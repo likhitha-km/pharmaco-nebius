@@ -59,8 +59,8 @@ export function ICSRReport({ report }) {
             </button>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: report.seriousness === 'Serious' ? '#FEF2F2' : '#ECFDF5', color: report.seriousness === 'Serious' ? '#DC2626' : '#059669', fontSize: 12, fontWeight: 500 }}>
-              {report.seriousness || 'Non-serious'}
+            <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: report.seriousness === 'Serious' ? '#FEF2F2' : '#F3F4F6', color: report.seriousness === 'Serious' ? '#DC2626' : '#374151', fontSize: 12, fontWeight: 500 }}>
+              {report.seriousness || 'Undetermined'}
             </span>
             <span style={{ padding: '3px 10px', borderRadius: 'var(--radius-full)', background: '#EFF6FF', color: '#2563EB', fontSize: 12, fontWeight: 500 }}>
               {report.report_type || 'Initial'}
@@ -116,7 +116,7 @@ export function ICSRReport({ report }) {
             <p style={{ fontStyle: 'italic', fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 6 }}>"{ae.original_text}"</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--color-primary-light)', color: 'var(--color-primary)', padding: '2px 8px', borderRadius: 4 }}>
-                {ae.meddra_preferred_term} [{ae.meddra_code}]
+                {ae.meddra_preferred_term}{ae.meddra_code ? ` [${ae.meddra_code}]` : ' (provisional — verify against MedDRA)'}
               </span>
             </div>
             <Field label="Onset" value={ae.onset_date} />
